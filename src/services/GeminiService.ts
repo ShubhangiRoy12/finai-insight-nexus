@@ -5,8 +5,10 @@ export class GeminiService {
   private genAI: GoogleGenerativeAI;
   private model: string = "gemini-1.5-flash";
   
-  constructor(apiKey: string) {
-    this.genAI = new GoogleGenerativeAI(apiKey);
+  constructor(apiKey?: string) {
+    // Use the provided API key, or fall back to the default key
+    const effectiveApiKey = apiKey || "AIzaSyCXIGkAtm_gUPsXJBLxL2bhds1rqPW98g0";
+    this.genAI = new GoogleGenerativeAI(effectiveApiKey);
   }
   
   async generateResponse(prompt: string): Promise<string> {
