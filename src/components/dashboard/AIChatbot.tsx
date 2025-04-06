@@ -1,10 +1,12 @@
 
-import React, { useState } from "react";
-import { SendHorizontal } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { SendHorizontal, AlertCircle } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
+import { GeminiService } from "@/services/GeminiService";
 
 interface Message {
   id: string;
@@ -27,14 +29,24 @@ const AIChatbot: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [apiKey, setApiKey] = useState("");
+  const [showApiKeyInput, setShowApiKeyInput] = useState(false);
+  const { toast } = useToast();
   
   const chatEndRef = React.useRef<HTMLDivElement>(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const handleSendMessage = () => {
+  useEffect(() => {
+    const savedApiKey = localStorage.getItem('gemini_api_key');
+    if (!savedApiKey) {
+      setShowApiKeyInput(true);
+    }
+  }, []);
+
+  const handleSendMessage = async () => {
     if (!input.trim()) return;
     
     // Add user message
@@ -49,22 +61,15 @@ const AIChatbot: React.FC = () => {
     setInput("");
     setIsLoading(true);
     
-    // Simulate bot response after delay
-    setTimeout(() => {
-      let response: string;
+    try {
+      const savedApiKey = localStorage.getItem('gemini_api_key');
       
-      // Simple response logic based on keywords
-      if (input.toLowerCase().includes("sip") || input.toLowerCase().includes("mutual fund")) {
-        response = "SIPs (Systematic Investment Plans) are a great way to invest in mutual funds. They allow you to invest small amounts regularly, typically monthly, which helps in reducing the average cost of investment through rupee cost averaging. I recommend starting with index funds for beginners due to their lower expense ratios and market-matching returns.";
-      } else if (input.toLowerCase().includes("stock") || input.toLowerCase().includes("shares")) {
-        response = "When investing in stocks, it's important to focus on companies with strong fundamentals, good management, and growth potential. Consider diversifying your portfolio across different sectors to manage risk. Currently, the technology and healthcare sectors are showing strong performance in the market.";
-      } else if (input.toLowerCase().includes("gold") || input.toLowerCase().includes("silver")) {
-        response = "Gold and silver can be good diversification assets in your portfolio. They often act as a hedge against inflation and economic uncertainty. You can invest in physical metals, ETFs, or sovereign gold bonds. Sovereign gold bonds offer the additional benefit of 2.5% annual interest along with potential capital appreciation.";
-      } else if (input.toLowerCase().includes("budget") || input.toLowerCase().includes("expense")) {
-        response = "Creating a budget is essential for financial health. Consider using the 50-30-20 rule: 50% for needs, 30% for wants, and 20% for savings and debt repayment. Track your expenses regularly and look for areas where you can reduce spending without significantly impacting your lifestyle.";
-      } else {
-        response = "I'd be happy to help with your financial queries. You can ask me about investments, SIPs, mutual funds, stocks, market trends, budgeting, or financial planning. What specific aspect of your finances would you like to explore?";
+      if (!savedApiKey) {
+        throw new Error("API key not found");
       }
+      
+      const geminiService = new GeminiService(savedApiKey);
+      const response = await geminiService.generateResponse(input);
       
       const botMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -74,14 +79,52 @@ const AIChatbot: React.FC = () => {
       };
       
       setMessages((prev) => [...prev, botMessage]);
+    } catch (error) {
+      console.error("Error generating response:", error);
+      
+      // Show error toast
+      toast({
+        title: "Error",
+        description: "Failed to generate response. Please check your API key.",
+        variant: "destructive",
+      });
+      
+      // Add error message
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        content: "Sorry, I encountered an error. Please check your API key or try again later.",
+        sender: "bot",
+        timestamp: new Date(),
+      };
+      
+      setMessages((prev) => [...prev, errorMessage]);
+      setShowApiKeyInput(true);
+    } finally {
       setIsLoading(false);
-    }, 1500);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
+    }
+  };
+
+  const handleSaveApiKey = () => {
+    if (apiKey.trim()) {
+      localStorage.setItem('gemini_api_key', apiKey);
+      setShowApiKeyInput(false);
+      toast({
+        title: "Success",
+        description: "API key saved successfully",
+      });
+    } else {
+      toast({
+        title: "Error",
+        description: "Please enter a valid API key",
+        variant: "destructive",
+      });
     }
   };
 
@@ -92,6 +135,41 @@ const AIChatbot: React.FC = () => {
         <CardDescription>Ask me about investments, SIPs, market trends</CardDescription>
       </CardHeader>
       <CardContent className="flex-1 flex flex-col h-[400px]">
+        {showApiKeyInput && (
+          <div className="p-4 mb-4 bg-muted/50 border rounded-md">
+            <div className="flex flex-col gap-2">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="h-5 w-5 text-amber-500 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium">Google API Key Required</p>
+                  <p className="text-xs text-muted-foreground">
+                    Enter your Google Gemini API key to use the AI advisor. You can get one from the{" "}
+                    <a 
+                      href="https://makersuite.google.com/app/apikey" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-primary underline hover:no-underline"
+                    >
+                      Google AI Studio
+                    </a>.
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2 mt-1">
+                <Input 
+                  type="password" 
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="Enter your Gemini API key"
+                  className="flex-1 text-xs"
+                  size={30}
+                />
+                <Button onClick={handleSaveApiKey} size="sm">Save</Button>
+              </div>
+            </div>
+          </div>
+        )}
+        
         <div className="flex-1 overflow-y-auto mb-4 space-y-4">
           {messages.map((message) => (
             <div
@@ -138,13 +216,13 @@ const AIChatbot: React.FC = () => {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            disabled={isLoading}
+            disabled={isLoading || showApiKeyInput}
             className="flex-1"
           />
           <Button 
             size="icon" 
             onClick={handleSendMessage} 
-            disabled={isLoading || !input.trim()}
+            disabled={isLoading || !input.trim() || showApiKeyInput}
           >
             <SendHorizontal size={18} />
           </Button>
